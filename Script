@@ -1,0 +1,260 @@
+
+**Calculation of cell type proportions using the four algorithms in EpiDISH R package** 
+
+#load the references
+load("~/KoborLab/kobor_space/shared_coding_resource/EpiDish_Refs/centEpiFibIC.m.rda")
+load("~/KoborLab/kobor_space/shared_coding_resource/EpiDish_Refs/centBloodSub.m.rda")
+
+sum(is.na(betas)) #make sure no NAs, package won't work with NAs
+betas <- na.omit(betas)
+#RPC
+Epi_counts_RPC_EPIC <- as.data.frame(hepidish(betas, ref1.m = centEpiFibIC.m, ref2.m = centBloodSub.m, method = "RPC", h.CT.idx = 3))
+#CBS
+Epi_counts_CBS_EPIC <- as.data.frame(hepidish(betas, ref1.m = centEpiFibIC.m, ref2.m = centBloodSub.m, method = "CBS", h.CT.idx = 3))
+#CP
+Epi_counts_CP_equality_EPIC <- as.data.frame(hepidish(betas, ref1.m = centEpiFibIC.m, ref2.m = centBloodSub.m, method = "CP", h.CT.idx = 3, constraint="equality"))
+#CP-default (inequality constraint)
+Epi_counts_CP_inequality_EPIC <- as.data.frame(hepidish(betas, ref1.m = centEpiFibIC.m, ref2.m = centBloodSub.m, method = "CP", h.CT.idx = 3, constraint="inequality"))
+
+#plot
+Epi_counts_RPC_EPIC$Sample_Name <- rownames(Epi_counts_RPC_EPIC)
+frac.p_RPC<- reshape2::melt(Epi_counts_RPC_EPIC) 
+ggplot(frac.p_RPC, aes(variable, value)) +
+  geom_boxplot(aes(fill = variable), outlier.colour = NA) +
+  geom_jitter(aes(fill = variable), size = 1.75, shape = 21, alpha = 0.7,position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.3))+
+  labs(title = "",
+       y = "Estimated cell type proportions",
+       x = "Cell types")+
+  theme_article() +
+  theme(axis.text.x=element_text(size=11),
+        axis.text.y=element_text(size=14),
+        axis.title.x=element_text(size=15, vjust=-0.3),
+        axis.title.y=element_text(size=15, vjust=2),
+        legend.position="none")
+
+
+****************************************************************************
+  
+  
+** Comparison of proportions across all the 12 cohorts ***  
+  
+cohorts_all <- readRDS("~/KoborLab/kobor_space/ckonwar/Celltype_Buccal_Clocks/cohorts_all.rds")
+head(cohorts_all)
+cohorts_BEC <- cohorts_all[,c(1,2,4,6,8)]
+cohorts_BEC_melt <- reshape2::melt(cohorts_BEC)
+colnames(cohorts_BEC_melt)[3] <- "Method"
+
+cohorts_BEC_melt$Method <- ordered(cohorts_BEC_melt$Method, level=c("Epi_RPC","EPi_CBS","Epi_CP"))
+
+#plot
+  ggplot(cohorts_BEC_melt, aes(factor(Method), value)) + 
+  geom_boxplot(outlier.shape = NA) + 
+  scale_color_jco() +  #library(ggsci)
+  scale_fill_jco() +
+  geom_jitter(aes(fill = Method), size = 0.8, shape = 21, alpha = 0.6, 
+              position = position_jitter(width = 0.25)) +
+  theme_test() +
+  facet_wrap(~ Dataset) +
+  xlab("") +
+  ylab("Estimated BEC proportions") +
+  facet_wrap(~ Dataset) +
+  ylim(c(0,1)) +
+  theme(axis.text.x=element_text(size=8),
+        axis.text.y=element_text(size=8),
+        axis.title.x=element_text(size=8, vjust=-0.3),
+        axis.title.y=element_text(size=10, vjust=2),
+        legend.position = "none")
+  
+  
+ *************************************************************************************
+    
+    
+**Correlation of chronological age with BEC proportions**
+    
+  #Linear regression in stats R package with Box-Cox transformation was used to evaluate the associations between chronological age and RPC-estimated cell type proportions in pediatric cheek swab samples. Box-Cox transformation using the boxcox function in mass R package was used to transform skewed estimated cell type proportions into an approximately normal distribution
+  
+  cohorts <- readRDS("~/KoborLab/kobor_space/ckonwar/Celltype_Buccal_Clocks/cohorts_all.rds")
+  
+  #find optimal lambda for Box-Cox transformation 
+    bc <- MASS::boxcox(Epi_CBS ~ ReportedageMonths, data=cohorts)
+  (lambda <- bc$x[which.max(bc$y)]) #2
+  cor.test(((cohorts$Epi_CBS^lambda-1)/lambda), cohorts$ReportedageMonths, method = "pearson") #-0.435
+  
+  ggplot(cohorts, aes(x = ReportedageMonths, y = Epi_CBS, colour = Epi_CBS)) + geom_point(size=2, colour="grey") +
+    geom_smooth(method="lm", colour="grey", size=0.5) + 
+    annotate(geom="text", x=100, y=0.25, size = 5.5, label="r = -0.45, p < 2.2e-16",
+             color="black")+
+    ylim(c(0,1)) +
+    xlab("Reported chronological age (months)") +
+    ylab("Estimated BEC proportions (CBS)") +
+    theme_article() +
+    theme(panel.border = element_blank(), 
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(), 
+          axis.line = element_line(colour = "black"), 
+          axis.text = element_text(size=13), 
+          axis.title.x=element_text(size=15, vjust=-0.3),
+          axis.title.y=element_text(size=15, vjust=2),
+          plot.caption = element_text(hjust = 0.5, size = rel(1)),
+          strip.background = element_blank(),
+          strip.text.x = element_blank())
+  
+  
+ ***********************************************************************************************
+    
+  
+  **Spline regression**
+    
+  However, upon visual inspection we observed the subset of the pediatric samples during adolescence did not conform well to the linear regression line. 
+  Thus, we conducted a spline regression analysis to assess if overall the model fit was improved by allowing for different slopes during childhood and adolescence for the regression between chronological age and estimated BEC proportions. 
+  The model fit was markedly improved by adding one knot at age 10, the developmentally relevant age of transition from childhood to adolescence (from adjusted R2=0.17 with no knot to adjusted R2=.25 with one knot at age 10) 
+
+  #fit spline regression model
+  spline_fit <- lm(cohorts_filt$Epi_RPC ~ bs(cohorts_filt$ReportedageMonths, knots=c(120)))
+  #view summary of spline regression model
+  summary(spline_fit) #.286
+  
+  #no spline
+  no_spline <- lm(cohorts_filt$Epi_RPC ~ cohorts_filt$ReportedageMonths)
+  summary(no_spline) #0.17
+  
+  We found no difference in model fit with the exact age of the spline regression knot within this period of transition from at ages 9, 10, or 11 years (adjusted R2=.25), and as such we selected the midpoint age, 10 years (120 months) as the transition to separate our pediatric samples into two developmentally relevant timepoints: 
+    i) infancy to childhood (0-9 years) and 
+   ii) adolescence, including preadolescence through the end of adolescence (10-18 years). 
+  
+dim(cohorts_ado <- subset(cohorts_filt, cohorts_filt$ReportedageMonths > 120))
+dim(cohorts_child <- subset(cohorts_filt, cohorts_filt$ReportedageMonths < 120))
+
+ MASS::boxcox(Epi_RPC ~ ReportedageMonths, data=cohorts_ado)
+(lambda <- bc$x[which.max(bc$y)]) #2
+cor.test(((cohorts_ado$Epi_RPC^lambda-1)/lambda), cohorts_ado$ReportedageMonths, method = "pearson") #-0.03 p=0.36 df 953
+
+  ggplot(cohorts_ado, aes(x = ReportedageMonths, y = Epi_RPC, color = Epi_RPC)) + 
+   geom_point(size=2) +
+   geom_smooth(method="lm", colour="grey", size=0.5) + 
+   annotate(geom="text", x=170, y=0.25, size = 5.5, label="r = -0.03, p = 0.36 (Adolescents)",
+           color="black")+
+   ylim(c(0,1)) +
+   xlab("Reported chronological age (months)") +
+   ylab("Estimated BEC proportions (RPC)") +
+   theme_article()+
+   theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(size=13), 
+        axis.title.x=element_text(size=15, vjust=-0.3),
+        axis.title.y=element_text(size=15, vjust=2),
+        plot.caption = element_text(hjust = 0.5, size = rel(1)),
+        strip.background = element_blank(),
+        strip.text.x = element_blank())
+
+
+bc <- MASS::boxcox(Epi_RPC ~ ReportedageMonths, data=cohorts_ado)
+(lambda <- bc$x[which.max(bc$y)]) #2
+cor.test(((cohorts_child$Epi_RPC^lambda-1)/lambda), cohorts_child$ReportedageMonths, method = "pearson") 
+
+  ggplot(cohorts_child, aes(x = ReportedageMonths, y = Epi_RPC, color = Epi_RPC)) +
+    geom_point(size=2) +
+    geom_smooth(method="lm", colour="grey", size=0.5) + 
+    annotate(geom="text", x=70, y=0.25, size=5, label="r = -0.54, p < 2.2e-16 (Infancy to childhood)",
+           color="black")+
+    ylim(c(0,1)) +
+    xlab("Reported chronological age (months)") +
+    ylab("Estimated BEC proportions (RPC)") +
+    theme_article()+
+    theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text = element_text(size=13), 
+        axis.title.x=element_text(size=15, vjust=-0.3),
+        axis.title.y=element_text(size=15, vjust=2),
+        plot.caption = element_text(hjust = 0.5, size = rel(1)),
+        strip.background = element_blank(),
+        strip.text.x = element_blank())
+
+    
+ *************************************************************************
+    
+    
+  **Correlation of predicted epigenetic age (PedBE) with estimated BEC proportions**
+    
+    
+  Given that estimated BEC proportion declined with chronological age, specifically from infancy to the end of childhood, we hypothesized that this association may be reflected in epigenetic ages calculated using tools such as the PedBE clock 
+    
+  PedBE <- readRDS("~/KoborLab/kobor_space/ckonwar/Celltype_Buccal_Clocks/BEPAC_Neurotox_GSE147058_SEED_GUSTO_BIBOno6_Techno_PedBE.rds")
+  
+  #find optimal lambda for Box-Cox transformation 
+  bc <- MASS::boxcox(Epi_RPC ~ PedBE_DNAmAgeMonth, data=PedBE)
+  (lambda <- bc$x[which.max(bc$y)]) #2
+  cor.test(((PedBE$Epi_RPC^lambda-1)/lambda), PedBE$PedBE_DNAmAgeMonth, method = "pearson")
+  
+    ggplot(BEPAC_Neurotox_GSE147058_SEED_GUSTO_BIBO_Techno_PedBe, aes(x = PedBE_DNAmAgeMonth, y = Epi_RPC, color = Epi_RPC)) + 
+      geom_point(size=2) +
+      geom_smooth(method="lm", colour="grey", size=0.5) + 
+      annotate(geom="text", x=120, y=0.25, size=5, label="r = -0.53, p < 2.2e-16",
+             color="black") +
+      ylim(c(0,1)) +
+      xlab("PedBe Age in (months)") +
+      ylab("Estimated BEC proportions (RPC)") +
+      theme_article() + 
+      theme(panel.border = element_blank(), 
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(), 
+          axis.line = element_line(colour = "black"), 
+          axis.text = element_text(size=12), 
+          axis.title.x=element_text(size=12, vjust=-0.3),
+          axis.title.y=element_text(size=12, vjust=2),
+          plot.caption = element_text(hjust = 0.5, size = rel(1)),
+          strip.background = element_blank(),
+          strip.text.x = element_blank())
+    
+    
+**************************************************************************
+      
+      
+  **Correlation of residuals regressed onto chronological age and age+estimated BEC proportions**
+      
+      ggplot(PedBE, aes(x = AgeAccelRes_chronage, y = Epi_RPC, color = Epi_RPC)) + 
+       geom_point(size=2) +
+       geom_smooth(method="lm", colour="grey", size=0.5) + 
+       annotate(geom="text", x=5, y=0.25, label="r = -0.2, p < 2.2e-16",
+               color="black") +
+       ylim(c(0,1)) +
+       xlab("Residuals corrected for age") +
+       ylab("Estimated BEC proportions (RPC)") +
+       theme_classic() + 
+       theme(panel.border = element_blank(), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            axis.line = element_line(colour = "black"), 
+            axis.text = element_text(size=12), 
+            axis.title.x=element_text(size=13, vjust=-0.3),
+            axis.title.y=element_text(size=13, vjust=2),
+            plot.caption = element_text(hjust = 0.5, size = rel(1)),
+            strip.background = element_blank(),
+            strip.text.x = element_blank())
+    
+      ggplot(BEPAC_Neurotox_GSE147058_SEED_GUSTO_BIBO_Techno_PedBe, aes(x = AgeAccelRes_chronage__epi, y = Epi_RPC, color = Epi_RPC)) +
+        geom_point(size=2) +
+        geom_smooth(method="lm", colour="grey", size=0.5) + 
+        annotate(geom="text", x=3, y=0.25, label="r = -0.00, p = 1",
+               color="black") +
+        ylim(c(0,1)) +
+        xlab("Residuals corrected for age and BEC") +
+        ylab("Estimated BEC proportions (RPC)") +
+        theme_classic() + 
+        theme(panel.border = element_blank(), 
+            panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(), 
+            axis.line = element_line(colour = "black"), 
+            axis.text = element_text(size=12), 
+            axis.title.x=element_text(size=13, vjust=-0.3),
+            axis.title.y=element_text(size=13, vjust=2),
+            plot.caption = element_text(hjust = 0.5, size = rel(1)),
+            strip.background = element_blank(),
+            strip.text.x = element_blank())
+    
+  **************************************************************************
+    
