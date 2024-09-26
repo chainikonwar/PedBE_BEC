@@ -236,7 +236,7 @@ cor.test(((cohorts_child$Epi_RPC^lambda-1)/lambda), cohorts_child$ReportedageMon
             strip.background = element_blank(),
             strip.text.x = element_blank())
     
-      ggplot(BEPAC_Neurotox_GSE147058_SEED_GUSTO_BIBO_Techno_PedBe, aes(x = AgeAccelRes_chronage__epi, y = Epi_RPC, color = Epi_RPC)) +
+      ggplot(PedBE, aes(x = AgeAccelRes_chronage__epi, y = Epi_RPC, color = Epi_RPC)) +
         geom_point(size=2) +
         geom_smooth(method="lm", colour="grey", size=0.5) + 
         annotate(geom="text", x=3, y=0.25, label="r = -0.00, p = 1",
